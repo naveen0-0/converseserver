@@ -47,6 +47,8 @@ io.on('connection',(socket:Socket) => {
   socket.join(chatId)
 
   socket.on('friend_request',async (data) => {
+    console.log(data);
+    
     
     // Insert in client1
     let updateOneDone = await User.updateOne({ username:data.whoRequested },{
@@ -62,16 +64,48 @@ io.on('connection',(socket:Socket) => {
       }
     })
 
-    if(updateOneDone && updateTwoDone){
-      //* Send the added friend to front end received user
-      io.to(data.chatId).emit('friend_request',{ requestedfriend : { username :data.whoRequested, chatId:data.requestingguychatId,whoRequested:data.whoRequested, whoAccepted:data.username, messages:[] },
-      acceptedfriend:{ username :data.username, chatId:data.chatId,whoRequested:data.whoRequested, whoAccepted:data.username, messages:[] }})
+    if(updateOneDone){
+      socket.emit('friend_request_success',{friend:{ username :data.username, chatId:data.chatId,whoRequested:data.whoRequested, whoAccepted:data.username, messages:[],requestAccepted:false }})
+    }
+      
+    if(updateTwoDone){
+      io.to(data.chatId).emit('friend_request',{friend : { username :data.whoRequested, chatId:data.requestingguychatId,whoRequested:data.whoRequested, whoAccepted:data.username, messages:[],requestAccepted:false }})
     }
   })
 
-  socket.on('friend_request_success',data => {    
-    io.to(data.chatId).emit('friend_request_success',data.acceptedfriend)
+  //! Working on This
+  socket.on('accept_friend_request', async data => {
+    let updateOneDone =  await User.findOneAndUpdate({chatId:data.chatId,"friends.chatId":data.friendChatId},{ $set : { "friends.$.requestAccepted":true}})
+    let updateTwoDone = await User.findOneAndUpdate({chatId:data.friendChatId,"friends.chatId":data.chatId},{ $set : { "friends.$.requestAccepted":true}})
+    
+      
+    if(updateOneDone){
+      socket.emit('accept_friend_request_success',data)
+    }
+    if(updateTwoDone){
+      io.to(data.friendChatId).emit('accept_friend_request',data)
+    }
   })
+    
+  
+  socket.on('decline_friend_request', data => {
+    console.log(data);
+    //* delete the friend 
+    //* in both users and in the redux store
+  })
+
+  //* Sending Messages
+  socket.on('send_message', async data => {
+    console.log(data);
+    const date = Date.now
+    let user = await User.findOne({ username:data.username,"friends.username": data.friendUsername })
+    console.log(user)
+    //*Client 1
+    socket.emit('send_message_success',{...data,createdAt:date})
+    //*Client 1
+    io.to(data.friendChatId).emit('send_message',{...data,createdAt:date })
+  })
+
 
   socket.on('disconnect',() => console.log("User left"))
 })
